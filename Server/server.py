@@ -22,20 +22,20 @@ class Message:
 CLIENTS = {} # List of connected clients with {nickname: ip} mapping
 CHANNELS = ['#general'] # List of current channels
 PACKET_SIZE = 2048 # default packet size
-client_locks = {} # Dictionary to lock access to client data
+CLIENT_THREADS = {} # Dictionary to lock access to client data
 
     
-def send_packet(conn, message: Message):
+def send_packet(conn: socket.socket, message: Message):
     # Encode message data and send it
     data = f"{message.command}|{message.nickname}|{message.channel}|{message.content}"
     
-    print(f"SENT: To {conn.client_address[0]}, data: {data}") #DEBUG
-    conn.request.sendall(data.encode()) 
+    print(f"SENT: To '{conn.getsockname()}', data: '{data}'") #DEBUG
+    conn.sendall(data.encode()) 
 
-def receive_packet(conn) -> Message:
+def receive_packet(conn, addr) -> Message:
     # Receive data from client and decode it
     data = conn.recv(PACKET_SIZE).decode()
-    print(f"REQUEST: from {conn.client_address[0]}, data: {data}") #DEBUG
+    print(f"REQUEST: from '{addr}', data: '{data}'") #DEBUG
     # Split data into message components
     data = data.split('|')
     if len(data) != 4:
@@ -46,22 +46,22 @@ def receive_packet(conn) -> Message:
 def broadcast(message: Message):
     # Send message to all connected clients
     for conn, (nickname, _) in CLIENTS.items():
-        with client_locks[conn]:
+        with CLIENT_THREADS[conn]:
             if conn != message.nickname:  # Don't send to the sender itself
                 send_packet(conn, message)
 
-def broadcast_to_channel(message: Message):
+def broadcast_to_channel(message: Message): # EI TÄLLÄ HETKELLÄ TOIMI
     # Send message to all clients in the same channel
     for conn, (nickname, channel) in CLIENTS.items():
-        with client_locks[conn]:
+        with CLIENT_THREADS[conn]: # Tää kusee, ei löydä keyta
             if channel == message.channel and conn != message.nickname:
                 send_packet(conn, message)                
                 
 def handle_quit(conn, nickname):
     # Remove client from list and broadcast leave message
-    with client_locks[conn]:
+    with CLIENT_THREADS[conn]:
         del CLIENTS[conn]
-        del client_locks[conn]
+        del CLIENT_THREADS[conn]
     broadcast(Message('SERVER', None, None, f"{nickname} has left the chat!"))
     conn.close()  # Close the connection
 
@@ -71,54 +71,57 @@ def send_private_message(message: Message):
     if recipient in [nickname for _, nickname in CLIENTS.values()]:
         for conn, (nickname_, _) in CLIENTS.items():
             if nickname_ == recipient:
-                with client_locks[conn]:
+                with CLIENT_THREADS[conn]:
                     send_packet(conn, message)
                 break
     else:
         # Send message back to sender indicating recipient not found
         sender_conn = next(iter(CLIENTS))  # Get sender's connection
-        with client_locks[sender_conn]:
+        with CLIENT_THREADS[sender_conn]:
             send_packet(sender_conn, Message('ERROR', None, None, f"User {recipient} not found!"))
 
-def handle_client(conn, addr):
+def handle_client(conn: socket.socket, addr):
     print(f"Connected by {addr}")
-    client_locks[conn] = threading.Lock()  # Create lock for this client
+    CLIENT_THREADS[conn] = threading.Lock()  # Create lock for this client
     
     # Continuously receive messages
     while True:
         try:
-            message = receive_packet(conn)
+            message = receive_packet(conn, addr)
             if message is None:
                 continue
             
             elif message.command == "CONNECT":
                 # Error handling
                 if message.nickname == "":
-                    send_packet(Message("ERROR","","","Invalid Nickname!"))
-                # Check if nickname is taken 
-                if CLIENTS.get(message.nickname) != None:
-                    send_packet(Message("ERROR","","","Nickname already in use!"))
+                    send_packet(conn, Message("ERROR","","","Invalid Nickname!"))
+                    break
+                # Check if nickname is taken TODO: fix
+                # if CLIENTS[message.nickname] != None:
+                #     send_packet(conn, Message("ERROR","","","Nickname already in use!"))
+                #     break
                 # assign nickname to client and give list of channels
-                else: 
-                    CLIENTS[message.nickname] = message.client_address
-                    send_packet(Message("CHANNELS",message.nickname,"",str(CHANNELS)))
+                with CLIENT_THREADS[conn]:
+                    nickname = message.nickname
+                    CLIENTS[conn] = (nickname, '#general')  # Default channel
+                    send_packet(conn, Message("CHANNELS",message.nickname,"",str(CHANNELS)))
                 
             elif message.command == "JOIN":
                 # tries to find desired channel and if successful, checks if desired nick is taken
-                for channel in CHANNELS:
-                    if message.channel.lower() == channel.lower():
+                if message.channel in CHANNELS:
+                    CLIENTS[conn] = (nickname, message.channel)  # Default channel
                         
-                        # Broadcast join message
-                        broadcast(Message('SERVER', None, None, f"{message.nickname} has joined the chat!"))
-                        send_packet(Message("OK", message.nickname, channel, ""))
-                        break
-                        
-                # self.send_packet(Message("ERROR","","","Invalid channel!"))
+                    # Broadcast join message
+                    # broadcast(Message('SERVER', None, None, f"{message.nickname} has joined the chat!"))
+                    send_packet(conn, Message("OK", message.nickname, message.channel, ""))
+                    
+                else:    
+                    send_packet(conn, Message("ERROR","","","Invalid channel!"))
 
                 break
             
             elif message.command == 'MESSAGE':
-                broad_to_channel(message)
+                broadcast_to_channel(message)
                 break
             
             elif message.command == 'PRIVATE':

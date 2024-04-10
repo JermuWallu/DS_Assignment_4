@@ -34,6 +34,7 @@ def main():
             
         elif choice == 5:
             print("\nThank you for using my software!\n")
+            lib.disconnect()
             exit(0)
             
         else:

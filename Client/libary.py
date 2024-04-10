@@ -19,7 +19,7 @@ PACKET_SIZE = 2048 # default packet size
 NICKNAME = "" # Current nickname
 
 def send_packet(message: Message):
-    data =f"{message.command}|{message.nickname}|{message.channel}|{message.content}\n"
+    data =f"{message.command}|{message.nickname}|{message.channel}|{message.content}"
     print(f"sending: {data}") #DEBUG
     SOCK.sendall(data.encode())
 
@@ -39,7 +39,7 @@ def connect(ip="localhost", port=8000, nickname="default"):
         
         send_packet(Message("CONNECT", nickname, "", ""))
         recv = receive_packet().split('|')
-        if recv[0] == "OK":
+        if recv[0] == "CHANNELS":
             NICKNAME = recv[1]
             print(f"Connection established, Channels:\n{recv[3]}")
         
@@ -48,12 +48,11 @@ def connect(ip="localhost", port=8000, nickname="default"):
         print("Error: ",e)
 
 def join_channel(type: str, channel: str):
-    global SOCK, NICKNAME
+    global SOCK, CHANNEL
     
     send_packet(Message("JOIN", NICKNAME, channel, ""))
     recv = receive_packet().split('|')
     if recv[0] == "OK":
-        NICKNAME = recv[1]
         CHANNEL = recv[2]
         
         # Start thread to receive messages
