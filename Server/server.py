@@ -156,7 +156,6 @@ def handle_client(conn: socket.socket, addr):
             print(f"Client {addr} disconnected abruptly!")
             handle_quit(conn, CLIENTS[conn][0])
     return
-
 def clients_count():
     actives = 0
     while True:
