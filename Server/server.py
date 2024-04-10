@@ -1,6 +1,5 @@
 from socketserver import *
 import sys
-import 
 
 # TODO:
 # - Accept incoming connection
@@ -27,26 +26,31 @@ class ThreadingTCPServer(ThreadingMixIn, TCPServer):
     pass
 
 class ChatServerHandler(BaseRequestHandler):
+    
+    def send_packet(self, message: Message):
+        # Encode message data and send it
+        data = f"{message.command}|{message.nickname}|{message.channel}|{message.content}"
+        
+        print(f"SENT: To {self.client_address[0]}, data: {data}")
+        self.request.sendall(data.encode())
+        
+    def receive_packet(self) -> str:
+        data = str(self.request.recv(PACKET_SIZE).decode())
+        print(f"REQUEST: from {self.client_address[0]}, data: {data}")
+        return data
+    
     def receive_message(self) -> Message:
         # Receive message data and decode it
-        self.data = self.rfile.readline().decode()
+        self.data = self.receive_packet()
         
         # Split data into message components
         data = self.data.split('|')
-        print(f"REQUEST: from {self.client_address[0]}, data: {self.data}")
         command = data[0] if data[0] is not None else ""
         nickname = data[1] if data[1] is not None else ""
         channel = data[2] if data[2] is not None else ""
         content = data[3] if data[3] is not None else ""
         
         return Message(command, nickname, channel, content)
-
-    def send_packet(self, message: Message):
-        # Encode message data and send it
-        data = f"{message.command}|{message.nickname}|{message.channel}|{message.content}"
-        
-        print(f"SENT: To {self.client_address[0]}, data: {data}")
-        self.request.wfile.write(data.encode())
 
     def broadcast(self, message: Message):
         # Send message to all connected clients
@@ -135,7 +139,7 @@ class ChatServerHandler(BaseRequestHandler):
                 pass
 
     def handle_timeout(self):
-        print("no timeout :D")
+        print("no timeout") # doesen't work :DDDDDDDDDDDDDD
 
 if __name__ == '__main__':
     HOST, PORT = "localhost", 8000

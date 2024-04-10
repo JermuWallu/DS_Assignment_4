@@ -19,7 +19,10 @@ PACKET_SIZE = 2048 # default packet size
 NICKNAME = "" # Current nickname
 
 def send_packet(message: Message):
-    SOCK.wfile.write(f"{message.command}|{message.nickname}|{message.channel}|{message.content}".encode())
+    SOCK.sendall(f"{message.command}|{message.nickname}|{message.channel}|{message.content}+\n".encode())
+
+def receive_packet() -> str:
+    return str(SOCK.recv(PACKET_SIZE).decode())
 
 # Connect to server and send data
 def connect(ip="localhost", port=8000):
@@ -30,7 +33,7 @@ def connect(ip="localhost", port=8000):
         SOCK.connect(ADDR)
         
         send_packet(Message("CONNECT", "", "", ""))
-        recv_msg = str(SOCK.rfile.readline(), "utf-8").split('|')
+        recv_msg = receive_packet().split('|')
         print(f"Connection established, Channels:\n{recv_msg[3]}")
         
         return
@@ -41,7 +44,7 @@ def join_channel(type: str, nickname: str, channel: str):
     global SOCK, NICKNAME
     
     send_packet(Message("JOIN", nickname, channel, ""))
-    recv = str(SOCK.rfile.readline(), "utf-8").split('|')
+    recv = receive_packet().split('|')
     if recv[0] == "OK":
         NICKNAME = recv[1]
         CHANNEL = recv[2]
@@ -101,7 +104,7 @@ def receive_message():
             break
         
         # Receive message data and decode it
-        data = SOCK.rfile.readline().decode()
+        data = receive_packet()
         if data == None:
             print("connection has been closed.")
             break
@@ -124,16 +127,6 @@ def receive_message():
                 print(f"{command} ignored")
         
         # TODO: print the text to client
-    
-def test_message():
-    if SOCK is None:
-        print("Connection hasn't been established, use connect() first.")
-        return
-    
-    # Encode message data and send it
-    send_packet(Message("TEST", "test_nick", "#test_channel", "this is a test"))
-    received = str(SOCK.rfile.readline(), "utf-8")
-    print(received)
 
 def menu() -> int:
     print("\nHello and welcome to Jere's texter!")
