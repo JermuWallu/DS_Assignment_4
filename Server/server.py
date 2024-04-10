@@ -30,18 +30,18 @@ def send_packet(conn, message: Message):
     data = f"{message.command}|{message.nickname}|{message.channel}|{message.content}"
     
     print(f"SENT: To {conn.client_address[0]}, data: {data}") #DEBUG
-    conn.request.sendall(data.encode())
-    
-def receive_packet(conn) -> str:
-    data = str(conn.request.recv(PACKET_SIZE).decode())
-    print(f"REQUEST: from {conn.client_address[0]}, data: {data}") #DEBUG
-    return data
+    conn.request.sendall(data.encode()) 
 
-    # Find client by nickname and send message
-    for sock, (nick, _) in CLIENTS.items():
-        if nick == client:
-            self.send_packet(message)
-            break
+def receive_packet(conn) -> Message:
+    # Receive data from client and decode it
+    data = conn.recv(PACKET_SIZE).decode()
+    print(f"REQUEST: from {conn.client_address[0]}, data: {data}") #DEBUG
+    # Split data into message components
+    data = data.split('|')
+    if len(data) != 4:
+        return None
+    command, nickname, channel, content = data
+    return Message(command, nickname, channel, content)
 
 def broadcast(message: Message):
     # Send message to all connected clients
@@ -118,7 +118,7 @@ def handle_client(conn, addr):
                 break
             
             elif message.command == 'MESSAGE':
-                broadcast_to_channel(message)
+                broad_to_channel(message)
                 break
             
             elif message.command == 'PRIVATE':
