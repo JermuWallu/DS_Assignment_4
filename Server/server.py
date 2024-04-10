@@ -1,4 +1,4 @@
-from socketserver import *
+import socket
 import sys
 import threading
 
@@ -22,100 +22,95 @@ class Message:
 CLIENTS = {} # List of connected clients with {nickname: ip} mapping
 CHANNELS = ['#general'] # List of current channels
 PACKET_SIZE = 2048 # default packet size
+client_locks = {} # Dictionary to lock access to client data
 
-class ThreadingUDPServer(ThreadingMixIn, UDPServer):
-    pass
-
-class ChatServerHandler(DatagramRequestHandler):
     
-    def send_packet(self, message: Message):
-        # Encode message data and send it
-        data = f"{message.command}|{message.nickname}|{message.channel}|{message.content}"
-        
-        print(f"SENT: To {self.client_address[0]}, data: {data}")
-        self.request.sendall(data.encode())
-        
-    def receive_packet(self) -> str:
-        data = str(self.request.recv(PACKET_SIZE).decode())
-        print(f"REQUEST: from {self.client_address[0]}, data: {data}")
-        return data
+def send_packet(conn, message: Message):
+    # Encode message data and send it
+    data = f"{message.command}|{message.nickname}|{message.channel}|{message.content}"
     
-    def receive_message(self) -> Message:
-        # Receive message data and decode it
-        self.data = self.receive_packet()
-        
-        # Split data into message components
-        data = self.data.split('|')
-        if len(data) != 4:
-            return None
-        
-        command = data[0] if data[0] is not None else ""
-        nickname = data[1] if data[1] is not None else ""
-        channel = data[2] if data[2] is not None else ""
-        content = data[3] if data[3] is not None else ""
-        
-        return Message(command, nickname, channel, content)
+    print(f"SENT: To {conn.client_address[0]}, data: {data}") #DEBUG
+    conn.request.sendall(data.encode())
+    
+def receive_packet(conn) -> str:
+    data = str(conn.request.recv(PACKET_SIZE).decode())
+    print(f"REQUEST: from {conn.client_address[0]}, data: {data}") #DEBUG
+    return data
 
-    def broadcast(self, message: Message):
-        # Send message to all connected clients
-        for client, channel in CLIENTS.items():
-            if channel == message.channel:
-                self.send_message_to(client, message)
+    # Find client by nickname and send message
+    for sock, (nick, _) in CLIENTS.items():
+        if nick == client:
+            self.send_packet(message)
+            break
 
-    def message_to_channel(self, message: Message):
-        # Send message to all clients in the same channel
-        self.broadcast(Message(message.command, message.nickname, message.channel, message.content))
+def broadcast(message: Message):
+    # Send message to all connected clients
+    for conn, (nickname, _) in CLIENTS.items():
+        with client_locks[conn]:
+            if conn != message.nickname:  # Don't send to the sender itself
+                send_packet(conn, message)
 
-    def send_private_message(self, message: Message):
-        # Find recipient and send message privately
-        recipient = message.content.split(' ')[0]  # Assuming first word is recipient
-        if recipient in CLIENTS:
-            self.send_message_to(recipient, message)
-        else:
-            self.send_packet(Message('SERVER', None, None, f"User {recipient} not found!"))
+def broadcast_to_channel(message: Message):
+    # Send message to all clients in the same channel
+    for conn, (nickname, channel) in CLIENTS.items():
+        with client_locks[conn]:
+            if channel == message.channel and conn != message.nickname:
+                send_packet(conn, message)                
+                
+def handle_quit(conn, nickname):
+    # Remove client from list and broadcast leave message
+    with client_locks[conn]:
+        del CLIENTS[conn]
+        del client_locks[conn]
+    broadcast(Message('SERVER', None, None, f"{nickname} has left the chat!"))
+    conn.close()  # Close the connection
 
-    def send_message_to(self, client, message: Message):
-        # Find client by nickname and send message
-        for sock, (nick, _) in CLIENTS.items():
-            if nick == client:
-                self.send_packet(message)
+def send_private_message(message: Message):
+    # Find recipient and send message privately
+    recipient = message.content.split(' ')[0]  # Assuming first word is recipient
+    if recipient in [nickname for _, nickname in CLIENTS.values()]:
+        for conn, (nickname_, _) in CLIENTS.items():
+            if nickname_ == recipient:
+                with client_locks[conn]:
+                    send_packet(conn, message)
                 break
+    else:
+        # Send message back to sender indicating recipient not found
+        sender_conn = next(iter(CLIENTS))  # Get sender's connection
+        with client_locks[sender_conn]:
+            send_packet(sender_conn, Message('ERROR', None, None, f"User {recipient} not found!"))
 
-    def handle_quit(self, nickname):
-        # Remove client from list and broadcast leave message
-        del CLIENTS[nickname]
-        self.broadcast(Message('SERVER', None, None, f"{nickname} has left the chat!"))
-
-    def handle(self):
-        # Continuously receive messages
-        while True:
-            message = self.receive_message()
+def handle_client(conn, addr):
+    print(f"Connected by {addr}")
+    client_locks[conn] = threading.Lock()  # Create lock for this client
+    
+    # Continuously receive messages
+    while True:
+        try:
+            message = receive_packet(conn)
             if message is None:
                 continue
+            
             elif message.command == "CONNECT":
-                #  here you would add security stuff 
-                
                 # Error handling
                 if message.nickname == "":
-                    self.send_packet(Message("ERROR","","","Invalid Nickname!"))
-                    
+                    send_packet(Message("ERROR","","","Invalid Nickname!"))
+                # Check if nickname is taken 
                 if CLIENTS.get(message.nickname) != None:
-                    self.send_packet(Message("ERROR","","","Nickname already in use!"))
-                else:
+                    send_packet(Message("ERROR","","","Nickname already in use!"))
+                # assign nickname to client and give list of channels
+                else: 
                     CLIENTS[message.nickname] = message.client_address
-                    self.send_packet(Message("CHANNELS",message.nickname,"",str(CHANNELS)))
-                
+                    send_packet(Message("CHANNELS",message.nickname,"",str(CHANNELS)))
                 
             elif message.command == "JOIN":
-                
-                
                 # tries to find desired channel and if successful, checks if desired nick is taken
                 for channel in CHANNELS:
                     if message.channel.lower() == channel.lower():
-                       
+                        
                         # Broadcast join message
-                        self.broadcast(Message('SERVER', None, None, f"{message.nickname} has joined the chat!"))
-                        self.send_packet(Message("OK", message.nickname, channel, ""))
+                        broadcast(Message('SERVER', None, None, f"{message.nickname} has joined the chat!"))
+                        send_packet(Message("OK", message.nickname, channel, ""))
                         break
                         
                 # self.send_packet(Message("ERROR","","","Invalid channel!"))
@@ -123,15 +118,15 @@ class ChatServerHandler(DatagramRequestHandler):
                 break
             
             elif message.command == 'MESSAGE':
-                self.message_to_channel(message)
+                broadcast_to_channel(message)
                 break
             
             elif message.command == 'PRIVATE':
-                self.send_private_message(message)
+                send_private_message(message)
                 break
             
             elif message.command == 'QUIT':
-                self.handle_quit(message.nickname)
+                handle_quit(message.nickname)
                 break
             
             elif message.command == "DISCONNECT":
@@ -142,12 +137,21 @@ class ChatServerHandler(DatagramRequestHandler):
                 print("mitä vittua")
                 print(message.__str__)
                 pass
+        except ConnectionAbortedError as E:
+            print(f"Client {addr} disconnected abruptly!")
+            handle_quit(conn, CLIENTS[conn][0])
 
-    def handle_timeout(self):
-        print("no timeout") # doesen't work :DDDDDDDDDDDDDD
+def main():
+    HOST, PORT = "localhost", 8000
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+        server.bind((HOST, PORT))
+        server.listen(1) # in documentation it put 1 there :D
+        print(f"Server listening on {HOST}:{PORT}")
+        
+        while True:
+            conn, addr = server.accept()
+            thread = threading.Thread(target=handle_client,args=(conn,addr))
+            thread.start()
 
 if __name__ == '__main__':
-    HOST, PORT = "localhost", 8000
-    with ThreadingTCPServer((HOST, PORT), ChatServerHandler) as server:
-        print(f"Server listening on {HOST}:{PORT}")
-        server.serve_forever()
+    main()
