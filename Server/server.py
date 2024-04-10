@@ -1,5 +1,6 @@
 from socketserver import *
 import sys
+import threading
 
 # TODO:
 # - Accept incoming connection
@@ -18,14 +19,14 @@ class Message:
         
 # Global variables:
 
-CLIENTS = {} # List of connected clients with {nickname: channel} mapping
+CLIENTS = {} # List of connected clients with {nickname: ip} mapping
 CHANNELS = ['#general'] # List of current channels
 PACKET_SIZE = 2048 # default packet size
 
-class ThreadingTCPServer(ThreadingMixIn, TCPServer):
+class ThreadingUDPServer(ThreadingMixIn, UDPServer):
     pass
 
-class ChatServerHandler(BaseRequestHandler):
+class ChatServerHandler(DatagramRequestHandler):
     
     def send_packet(self, message: Message):
         # Encode message data and send it
@@ -45,6 +46,9 @@ class ChatServerHandler(BaseRequestHandler):
         
         # Split data into message components
         data = self.data.split('|')
+        if len(data) != 4:
+            return None
+        
         command = data[0] if data[0] is not None else ""
         nickname = data[1] if data[1] is not None else ""
         channel = data[2] if data[2] is not None else ""
@@ -86,25 +90,33 @@ class ChatServerHandler(BaseRequestHandler):
         # Continuously receive messages
         while True:
             message = self.receive_message()
-            if message.command == "CONNECT":
+            if message is None:
+                continue
+            elif message.command == "CONNECT":
                 #  here you would add security stuff 
-                self.send_packet(Message("CHANNELS","","",str(CHANNELS)))
                 
-            elif message.command == "JOIN":
                 # Error handling
                 if message.nickname == "":
                     self.send_packet(Message("ERROR","","","Invalid Nickname!"))
+                    
+                if CLIENTS.get(message.nickname) != None:
+                    self.send_packet(Message("ERROR","","","Nickname already in use!"))
+                else:
+                    CLIENTS[message.nickname] = message.client_address
+                    self.send_packet(Message("CHANNELS",message.nickname,"",str(CHANNELS)))
+                
+                
+            elif message.command == "JOIN":
+                
+                
                 # tries to find desired channel and if successful, checks if desired nick is taken
                 for channel in CHANNELS:
                     if message.channel.lower() == channel.lower():
-                        if CLIENTS.get(message.nickname) == channel:
-                            self.send_packet(Message("ERROR","","","Nickname already in use!"))
-                        else:
-                            CLIENTS[message.nickname] = message.channel
-                            # Broadcast join message
-                            self.broadcast(Message('SERVER', None, None, f"{message.nickname} has joined the chat!"))
-                            self.send_packet(Message("OK", message.nickname, channel, ""))
-                            break
+                       
+                        # Broadcast join message
+                        self.broadcast(Message('SERVER', None, None, f"{message.nickname} has joined the chat!"))
+                        self.send_packet(Message("OK", message.nickname, channel, ""))
+                        break
                         
                 # self.send_packet(Message("ERROR","","","Invalid channel!"))
 
@@ -124,10 +136,6 @@ class ChatServerHandler(BaseRequestHandler):
             
             elif message.command == "DISCONNECT":
                 # Server doesn't have to do anything since client already left 
-                break
-                
-            elif message.command == 'TEST':
-                self.test_message(message)
                 break
             
             else:

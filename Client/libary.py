@@ -19,31 +19,38 @@ PACKET_SIZE = 2048 # default packet size
 NICKNAME = "" # Current nickname
 
 def send_packet(message: Message):
-    SOCK.sendall(f"{message.command}|{message.nickname}|{message.channel}|{message.content}+\n".encode())
+    data =f"{message.command}|{message.nickname}|{message.channel}|{message.content}\n"
+    print(f"sending: {data}") #DEBUG
+    SOCK.sendall(data.encode())
 
 def receive_packet() -> str:
-    return str(SOCK.recv(PACKET_SIZE).decode())
+    data = str(SOCK.recv(PACKET_SIZE).decode())
+    print(f"received: {data}") #DEBUG
+    return data
 
 # Connect to server and send data
-def connect(ip="localhost", port=8000):
+def connect(ip="localhost", port=8000, nickname="default"):
     try:
-        global SOCK, PACKET_SIZE
+        global SOCK, PACKET_SIZE, NICKNAME
         ADDR = (ip, port)
         SOCK = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # SOCK.bind(ADDR)
         SOCK.connect(ADDR)
         
-        send_packet(Message("CONNECT", "", "", ""))
-        recv_msg = receive_packet().split('|')
-        print(f"Connection established, Channels:\n{recv_msg[3]}")
+        send_packet(Message("CONNECT", nickname, "", ""))
+        recv = receive_packet().split('|')
+        if recv[0] == "OK":
+            NICKNAME = recv[1]
+            print(f"Connection established, Channels:\n{recv[3]}")
         
         return
     except Exception as e:
         print("Error: ",e)
 
-def join_channel(type: str, nickname: str, channel: str):
+def join_channel(type: str, channel: str):
     global SOCK, NICKNAME
     
-    send_packet(Message("JOIN", nickname, channel, ""))
+    send_packet(Message("JOIN", NICKNAME, channel, ""))
     recv = receive_packet().split('|')
     if recv[0] == "OK":
         NICKNAME = recv[1]

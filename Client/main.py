@@ -13,20 +13,21 @@ def main():
         if choice == 1:
             ip = str(input("give the servers ip address you want to connect: "))
             port = input("give the servers port you want to connect: ")
+            
             if len(ip) == 0:
                 print("parameters incorrect, using default ip:port (localhost:8000)")
                 ip="localhost" 
                 port=8000
-            lib.connect(ip,int(port))
+            nickname = input("Please enter your nickname: ")  
+            lib.connect(ip,int(port), nickname)
 
         elif choice == 2:
-            nickname = input("Please enter your nickname: ")  
-            lib.join_channel("PUBLIC", nickname, "#general")
+           
+            lib.join_channel("PUBLIC", "#general")
             
         elif choice == 3:
-            nickname = input("Please enter your nickname: ")
             target = input("who do you want to start private chat with?: ")
-            lib.join_channel("PUBLIC", nickname, target)
+            lib.join_channel("PRIVATE", target)
             
         elif choice == 4:
             lib.disconnect()
