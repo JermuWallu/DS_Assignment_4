@@ -25,11 +25,13 @@ def main():
             channel = input("what channel you want to join?: ")
             if len(channel) == 0:
                 channel = "#general"
-            lib.join_channel("PUBLIC", channel)
+            lib.join_channel(channel)
+            print("i have returned") 
             
         elif choice == 3:
             target = input("who do you want to start private chat with?: ")
-            lib.join_channel("PRIVATE", target)
+            lib.private_channel(target)
+            
             
         elif choice == 4:
             lib.disconnect()

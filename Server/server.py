@@ -58,18 +58,26 @@ def broadcast_to_channel(message: Message):
             if channel == message.channel and conn != message.nickname:
                 send_packet(conn, message)                
                 
-def handle_quit(conn, nickname):
+def handle_quit(conn):
     # Remove client from list and broadcast leave message
-    print(f"closing client '{nickname} Thread '{CLIENT_THREADS[conn]}'") 
+    nickname, channel = CLIENTS[conn]
+    CLIENTS[conn] = (nickname, "")
+    send_packet(conn, Message("QUIT","","","You have been successfully quit the channel"))
+    broadcast_to_channel(Message("MESSAGE", "SERVER", channel, f"'{nickname}' has left '{channel}'!"))
+    return
+
+def handle_disconnect(conn, nickname):
+    # Remove client from list and broadcast leave message
+    print(f"closing client '{nickname}' Thread '{CLIENT_THREADS[conn]}'") 
     with CLIENT_THREADS[conn]:
         del CLIENTS[conn]
         del CLIENT_THREADS[conn]
     broadcast(Message("MESSAGE", "SERVER", "", f"{nickname} has left the chat!"))
     conn.close()  # Close the connection
-
+    
 def send_private_message(message: Message):
     # Find recipient and send message privately
-    recipient = message.content.split(' ')[0]  # Assuming first word is recipient
+    recipient = message.channel
     if recipient in [nickname for _, nickname in CLIENTS.values()]:
         for conn, (nickname_, _) in CLIENTS.items():
             if nickname_ == recipient:
@@ -105,7 +113,7 @@ def handle_client(conn: socket.socket, addr):
                 # assign nickname to client and give list of channels
                 with CLIENT_THREADS[conn]:
                     nickname = message.nickname
-                    CLIENTS[conn] = (nickname, "#general")  # Default channel
+                    CLIENTS[conn] = (nickname, "")
                     send_packet(conn, Message("CHANNELS",message.nickname,"",str(CHANNELS)))
                 
             elif message.command == "JOIN":
@@ -114,14 +122,10 @@ def handle_client(conn: socket.socket, addr):
                     CLIENTS[conn] = (nickname, message.channel)  # Default channel
                     send_packet(conn, Message("OK", message.nickname, message.channel, ""))
                     
-                    
                     # Broadcast join message
                     broadcast_to_channel(Message("MESSAGE", "SERVER", message.channel, f"'{message.nickname}' has joined the chat!"))
-                    
-                    
                 else:    
                     send_packet(conn, Message("ERROR","","","Invalid channel!"))
-
                 continue
             
             elif message.command == "MESSAGE":
@@ -133,21 +137,20 @@ def handle_client(conn: socket.socket, addr):
                 continue
             
             elif message.command == "QUIT":
-                handle_quit(conn, message.nickname)
-                break
+                handle_quit(conn)
+                continue
             
             elif message.command == "DISCONNECT":
-                # Server doesn't have to do anything since client already left 
-                continue
+                handle_disconnect(conn, message.nickname)
+                break
             
             else:
                 print("mitä vittua")
-                print(message.__str__)
+                print(message.__str__())
                 continue
         except ConnectionAbortedError as E:
             print(f"Client {addr} disconnected abruptly!")
             handle_quit(conn, CLIENTS[conn][0])
-
     return
 
 def clients_count():
@@ -155,7 +158,7 @@ def clients_count():
     while True:
         if actives != threading.activeCount():
             actives = threading.activeCount()
-            print(f"current clients: {threading.activeCount()}\n")
+            print(f"current clients: {threading.activeCount()-1}\n")
             sleep(3)
 def main():
     HOST, PORT = "localhost", 8000

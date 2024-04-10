@@ -14,13 +14,13 @@ class Message:
 
 # Global variables
 SOCK = None
-CHANNEL = "" # List of current channels
+CHANNEL = None # List of current channels
 PACKET_SIZE = 2048 # default packet size
-NICKNAME = "" # Current nickname
+NICKNAME = None # Current nickname
 
 def send_packet(message: Message):
     data =f"{message.command}|{message.nickname}|{message.channel}|{message.content}"
-    print(f"sending: {data}") #DEBUG
+    print(f"sending: '{data}'") #DEBUG
     SOCK.sendall(data.encode())
 
 def receive_packet() -> str:
@@ -50,7 +50,21 @@ def connect(ip="localhost", port=8000, nickname="default"):
     except Exception as e:
         print("Error: ",e)
 
-def join_channel(type: str, channel: str):
+def disconnect():
+    global SOCK
+    if SOCK is None:
+        print("\nNo connection to close")
+        return
+    
+    send_packet(Message("DISCONNECT", "", "", ""))
+    sleep(1)
+    SOCK.close()
+    SOCK = None
+    NICKNAME = None
+    print("\nDisconnected from server")
+    return
+
+def join_channel(channel: str):
     global SOCK, CHANNEL
     
     send_packet(Message("JOIN", NICKNAME, channel, ""))
@@ -71,25 +85,13 @@ def join_channel(type: str, channel: str):
         
         # this happpens after leaving a channel
         send_packet(Message("QUIT",NICKNAME,CHANNEL,""))
+        CHANNEL = None
         sleep(1) #sleep so menu would be printed propely
         return
     elif recv[0] == "ERROR":
         print(f"Server: {recv[3]}")
     else:
         print("something unexpected happened")
-
-def disconnect():
-    global SOCK
-    if SOCK is None:
-        print("\nNo connection to close")
-        return
-    
-    send_packet(Message("DISCONNECT", "", "", ""))
-    sleep(1)
-    SOCK.close()
-    SOCK = None
-    print("\nDisconnected from server")
-    return
     
 def send_message():
     global SOCK, NICKNAME, CHANNEL
@@ -114,8 +116,9 @@ def send_message():
     return
 
 def receive_message():
-    global SOCK
-    while True:
+    global SOCK, CHANNEL
+    running = True
+    while running:
         # check if there is a connection
         if SOCK is None:
             print("Connection hasn't been established, use connect() first.")
@@ -123,7 +126,7 @@ def receive_message():
         
         # Receive message data and decode it
         data = receive_packet()
-        if len(data) == 0: 
+        if len(data) == 0 or not data or CHANNEL is None: 
             print("connection has been closed.")
             break
         
@@ -133,7 +136,7 @@ def receive_message():
         data = data.split('|')
         
         if len(data) != 4:
-            continue
+            break # This means if anybody sends an invalid packet this thread closes
         else:
             command = data[0] if data[0] is not None else ""
             nickname = data[1] if data[1] is not None else ""
@@ -141,6 +144,92 @@ def receive_message():
             content = data[3] if data[3] is not None else ""
             if command == "MESSAGE":
                 print(f"{nickname}{channel}: {content}") # DEBUG
+            elif command == "QUIT": # doesn't have any checks :DDDDD
+                # Server might send a QUIT message upon disconnect
+                print(f"[Server] {content}")
+                running = False  # Stop the thread
+            else:
+                print(f"{command} ignored")
+        
+        # TODO: print the text to client
+    # print("ending receive_message()") #DEBUG
+    return
+
+def private_channel(channel: str):
+    global SOCK, CHANNEL
+    CHANNEL = channel
+    
+    print(f"\You are now chatting with '{channel}'")
+    print("Type 'quit' to leave\n")
+    # Start thread to receive messages
+    receive_thread = threading.Thread(target=receive_private_message)
+    receive_thread.start()
+
+    # Send thread to send messages
+    send_thread = threading.Thread(target=send_private_message)
+    send_thread.start() 
+    send_thread.join() # blocks the menu to run until this thread is terminated
+    
+    # this happpens after leaving a channel
+    CHANNEL = None
+    sleep(1) #sleep so menu would be printed propely
+    return
+
+def send_private_message():
+    global SOCK, NICKNAME, CHANNEL
+    while True:
+        # check if there is a connection
+        if SOCK is None:
+            print("Connection hasn't been established, use connect() first.")
+            break
+        
+        msg = input()
+        if msg == None:
+            continue
+        
+        # Handles leaving, easier to implement than keyboard shortcut
+        if msg.lower() == "quit":
+            break
+        
+        
+        # Encode message and send it to the server
+        send_packet(Message("PRIVATE", NICKNAME, CHANNEL, msg))
+    # print("ending send_message()") #DEBUG
+    return
+
+def receive_private_message():
+    global SOCK, CHANNEL
+    running = True
+    while running:
+        # check if there is a connection
+        if SOCK is None:
+            print("Connection hasn't been established, use connect() first.")
+            break
+        
+        # Receive message data and decode it
+        data = receive_packet()
+        if len(data) == 0 or not data or CHANNEL is None: 
+            print("connection has been closed.")
+            break
+        
+        # print(f"data: {data}") # DEBUG, also done in receive_packet()
+        
+        # Split data into message components
+        data = data.split('|')
+        
+        if len(data) != 4:
+            break # This means if anybody sends an invalid packet this thread closes
+        else:
+            command = data[0] if data[0] is not None else ""
+            nickname = data[1] if data[1] is not None else ""
+            channel = data[2] if data[2] is not None else ""
+            content = data[3] if data[3] is not None else ""
+            if command == "MESSAGE":
+                print(f"{nickname}{channel}: {content}") # DEBUG
+            elif command == "QUIT": # doesn't have any checks :DDDDD
+                # Server might send a QUIT message upon disconnect
+                print(f"[Server] {content}")
+                running = False  # Stop the thread
             else:
                 print(f"{command} ignored")
         
