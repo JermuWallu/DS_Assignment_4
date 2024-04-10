@@ -15,7 +15,7 @@ SOCK = None
 CHANNELS = ['#general'] # List of current channels
 PACKET_SIZE = 2048 # default packet size
 NICKNAME = ""
-    
+
 # Connect to server and send data
 def connect(ip="localhost", port=8000) -> list:
     try:
@@ -27,7 +27,7 @@ def connect(ip="localhost", port=8000) -> list:
         message = Message("JOIN", "", "", "")
         SOCK.sendall(f"{message.command}|{message.nickname}|{message.channel}|{message.content}".encode())
         recv_msg = str(SOCK.recv(PACKET_SIZE), "utf-8").split('|')
-        print("Connection established")
+        print("Connection established,")
         
         return list(recv_msg[3])
     except Exception as e:
@@ -39,7 +39,9 @@ def disconnect():
         print("\nNo connection to close")
         return
     
-    SOCK.close("QUIT|||")
+    message = Message("DISCONNECT", "", "", "")
+    SOCK.sendall(f"{message.command}|{message.nickname}|{message.channel}|{message.content}".encode())
+    SOCK.close()
     SOCK = None
     print("\nDisconnected from server")
     return
@@ -76,15 +78,14 @@ def receive_message() -> Message:
     
     return Message(command, nickname, channel, content)
 
-def join_channel(nickname: str, channel: str):
+def join_channel(type: str, nickname: str, channel: str):
     global SOCK, NICKNAME
     
+    print(f"joined {type} channel D:DDD:D:D:D")
+    # message = Message("SET", nickname, "#general", "")
+    # SOCK.sendall(f"{message.command}|{message.nickname}|{message.channel}|{message.content}".encode())
+    # recv_message = str(SOCK.recv(PACKET_SIZE), "utf-8").split('|')
     
-    message = Message("SET", nickname, "#general", "")
-    SOCK.sendall(f"{message.command}|{message.nickname}|{message.channel}|{message.content}".encode())
-    recv_message = str(SOCK.recv(PACKET_SIZE), "utf-8").split('|')
-    
-
 def test_message():
     if SOCK is None:
         print("Connection hasn't been established, use connect() first.")
@@ -97,15 +98,8 @@ def test_message():
     received = str(SOCK.recv(PACKET_SIZE), "utf-8")
     print(received)
 
-def send_msg_to_channel():
-    print("sending a message to a channel")
-    return
-
-def send_private_msg(nickname: str):
-    print(f"sending a message to {nickname}")
-    return
-
 def menu() -> int:
+    print("\nHello and welcome to Jere's texter!")
     print("""
           Choices:
           1) Connect to a server
@@ -113,7 +107,6 @@ def menu() -> int:
           3) join a private chat
           4) disconnect fron server
           5) exit program
-          
           """)
     
     return int(input("select: "))

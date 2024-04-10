@@ -1,1 +1,3 @@
 .vscode
+Client/__pycache__
+*.docx

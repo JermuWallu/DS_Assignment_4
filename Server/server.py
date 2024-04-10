@@ -103,19 +103,27 @@ class ChatServerHandler(BaseRequestHandler):
                 self.send_message(Message("ERROR","","","Invalid channel!"))
 
                 break
+            
             elif message.command == 'MESSAGE':
                 self.broadcast_to_channel(message)
                 break
+            
             elif message.command == 'PRIVATE':
                 self.send_private_message(message)
                 break
+            
             elif message.command == 'QUIT':
-                # Client disconnect handling
                 self.handle_quit(message.nickname)
                 break
+            
+            elif message.command == "DISCONNECT":
+                # Server doesn't have to do anything since client already left 
+                break
+                
             elif message.command == 'TEST':
                 self.test_message(message)
                 break
+            
             else:
                 print("mitä vittua")
                 print(message.__str__)

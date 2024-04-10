@@ -8,7 +8,6 @@ import libary as lib
 
 def main():
     try:
-        print("Hello and welcome to Jere's texter!")
         choice = lib.menu()
         
         if choice == 1:
@@ -18,21 +17,27 @@ def main():
                 print("parameters incorrect, using default ip:port (localhost:8000)")
                 ip="localhost" 
                 port=8000
-            
-            nickname = input("Please enter your nickname: ")    
             lib.connect(ip,int(port))
-            lib.set_nickname(nickname)
+
         elif choice == 2:
-            lib.send_msg_to_channel()
+            nickname = input("Please enter your nickname: ")  
+            lib.join_channel("PUBLIC", nickname, "#general")
+            
         elif choice == 3:
-            lib.send_private_msg()
+            nickname = input("Please enter your nickname: ")
+            target = input("who do you want to start private chat with?: ")
+            lib.join_channel("PUBLIC", nickname, target)
+            
         elif choice == 4:
             lib.disconnect()
+            
         elif choice == 5:
             print("\nThank you for using my software!\n")
             exit(0)
+            
         elif choice == 10:
             lib.test_message()
+            
         else:
             print("Unknown choice, try again.")
         
