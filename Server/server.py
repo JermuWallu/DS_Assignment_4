@@ -34,15 +34,19 @@ def send_packet(conn: socket.socket, message: Message):
     conn.sendall(data.encode()) 
 
 def receive_packet(conn, addr) -> Message:
-    # Receive data from client and decode it
-    data = conn.recv(PACKET_SIZE).decode()
-    print(f"REQUEST: from '{addr}', data: '{data}'") #DEBUG
-    # Split data into message components
-    data = data.split('|')
-    if len(data) != 4:
+    try:
+        # Receive data from client and decode it
+        data = conn.recv(PACKET_SIZE).decode()
+        print(f"REQUEST: from '{addr}', data: '{data}'") #DEBUG
+        # Split data into message components
+        data = data.split('|')
+        if len(data) != 4:
+            return None
+        command, nickname, channel, content = data
+        return Message(command, nickname, channel, content)
+    except Exception as e:
+        print(f"failed receiving packets: {e}")
         return None
-    command, nickname, channel, content = data
-    return Message(command, nickname, channel, content)
 
 def broadcast(message: Message):
     # Send message to all connected clients
@@ -76,14 +80,15 @@ def handle_disconnect(conn, nickname):
     conn.close()  # Close the connection
     
 def send_private_message(message: Message):
+    sent = False
     # Find recipient and send message privately
     recipient = message.channel
-    if recipient in [nickname for _, nickname in CLIENTS.values()]:
+    if recipient in [nickname for nickname, _ in CLIENTS.values()]:
         for conn, (nickname_, _) in CLIENTS.items():
-            if nickname_ == recipient:
+            if nickname_ == recipient or nickname_ == message.nickname:
                 with CLIENT_THREADS[conn]:
                     send_packet(conn, message)
-                break
+                    sent = True
     else:
         # Send message back to sender indicating recipient not found
         sender_conn = next(iter(CLIENTS))  # Get sender's connection

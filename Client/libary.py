@@ -224,7 +224,7 @@ def receive_private_message():
             nickname = data[1] if data[1] is not None else ""
             channel = data[2] if data[2] is not None else ""
             content = data[3] if data[3] is not None else ""
-            if command == "MESSAGE":
+            if command == "PRIVATE":
                 print(f"{nickname}{channel}: {content}") # DEBUG
             elif command == "QUIT": # doesn't have any checks :DDDDD
                 # Server might send a QUIT message upon disconnect
