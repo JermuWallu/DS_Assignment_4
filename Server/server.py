@@ -81,9 +81,6 @@ class ChatServerHandler(BaseRequestHandler):
         # Remove client from list and broadcast leave message
         del CLIENTS[nickname]
         self.broadcast(Message('SERVER', None, None, f"{nickname} has left the chat!"))
-        
-    def test_message(self, message: Message):
-        self.send_packet(Message('SERVER', None, None, f"ketkä kaikki näkee tän viestin?"))
 
     def handle(self):
         # Continuously receive messages

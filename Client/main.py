@@ -35,9 +35,6 @@ def main():
             print("\nThank you for using my software!\n")
             exit(0)
             
-        elif choice == 10:
-            lib.test_message()
-            
         else:
             print("Unknown choice, try again.")
         
