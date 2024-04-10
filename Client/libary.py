@@ -19,7 +19,7 @@ PACKET_SIZE = 2048 # default packet size
 NICKNAME = "" # Current nickname
 
 def send_packet(message: Message):
-    SOCK.sendall(f"{message.command}|{message.nickname}|{message.channel}|{message.content}".encode())
+    SOCK.wfile.write(f"{message.command}|{message.nickname}|{message.channel}|{message.content}".encode())
 
 # Connect to server and send data
 def connect(ip="localhost", port=8000):
@@ -29,9 +29,8 @@ def connect(ip="localhost", port=8000):
         SOCK = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         SOCK.connect(ADDR)
         
-        message = Message("JOIN", "", "", "")
-        send_packet(message)
-        recv_msg = str(SOCK.recv(PACKET_SIZE), "utf-8").split('|')
+        send_packet(Message("CONNECT", "", "", ""))
+        recv_msg = str(SOCK.rfile.readline(), "utf-8").split('|')
         print(f"Connection established, Channels:\n{recv_msg[3]}")
         
         return
@@ -41,10 +40,8 @@ def connect(ip="localhost", port=8000):
 def join_channel(type: str, nickname: str, channel: str):
     global SOCK, NICKNAME
     
-
-    message = Message("JOIN", nickname, channel, "")
-    send_packet(message)
-    recv = str(SOCK.recv(PACKET_SIZE), "utf-8").split('|')
+    send_packet(Message("JOIN", nickname, channel, ""))
+    recv = str(SOCK.rfile.readline(), "utf-8").split('|')
     if recv[0] == "OK":
         NICKNAME = recv[1]
         CHANNEL = recv[2]
@@ -56,7 +53,7 @@ def join_channel(type: str, nickname: str, channel: str):
         # Send thread to send messages
         send_thread = threading.Thread(target=send_message)
         send_thread.start() 
-        # send_thread.join() # Wait for the send thread to finish
+        send_thread.join() # blocks the menu to run until this thread is terminated
     elif recv[0] == "ERROR":
         print(f"Server: {recv[3]}")
     else:
@@ -69,8 +66,7 @@ def disconnect():
         print("\nNo connection to close")
         return
     
-    message = Message("DISCONNECT", "", "", "")
-    send_packet(message)
+    send_packet(Message("DISCONNECT", "", "", ""))
     SOCK.close()
     SOCK = None
     print("\nDisconnected from server")
@@ -94,10 +90,9 @@ def send_message():
         
         
         # Encode message and send it to the server
-        message = Message("JOIN", NICKNAME, CHANNEL, msg)
-        send_packet(message)
+        send_packet(Message("JOIN", NICKNAME, CHANNEL, msg))
 
-def receive_message() -> Message:
+def receive_message():
     global SOCK
     while True:
         # check if there is a connection
@@ -106,21 +101,27 @@ def receive_message() -> Message:
             break
         
         # Receive message data and decode it
-        data = SOCK.request.recv(PACKET_SIZE).decode()
+        data = SOCK.rfile.readline().decode()
         if data == None:
             print("connection has been closed.")
             break
         
-        
-        print(f"PACKET: from {SOCK.client_address[0]}, data: {data}") # DEBUG
-        
+        print(f"data: {data}") # DEBUG
         
         # Split data into message components
         data = data.split('|')
-        command = data[0] if data[0] is not None else ""
-        nickname = data[1] if data[1] is not None else ""
-        channel = data[2] if data[2] is not None else ""
-        content = data[3] if data[3] is not None else ""
+        
+        if len(data) != 4:
+            continue
+        else:
+            command = data[0] if data[0] is not None else ""
+            nickname = data[1] if data[1] is not None else ""
+            channel = data[2] if data[2] is not None else ""
+            content = data[3] if data[3] is not None else ""
+            if command == "MESSAGE":
+                print(f"{nickname}@{channel}: {content}") # DEBUG
+            else:
+                print(f"{command} ignored")
         
         # TODO: print the text to client
     
@@ -130,10 +131,8 @@ def test_message():
         return
     
     # Encode message data and send it
-    message = Message("TEST", "test_nick", "#test_channel", "this is a test")
-    data = f"{message.command}|{message.nickname}|{message.channel}|{message.content}".encode()
-    SOCK.sendall(data)
-    received = str(SOCK.recv(PACKET_SIZE), "utf-8")
+    send_packet(Message("TEST", "test_nick", "#test_channel", "this is a test"))
+    received = str(SOCK.rfile.readline(), "utf-8")
     print(received)
 
 def menu() -> int:
