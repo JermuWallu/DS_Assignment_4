@@ -20,13 +20,13 @@ NICKNAME = None # Current nickname
 
 def send_packet(message: Message):
     data =f"{message.command}|{message.nickname}|{message.channel}|{message.content}"
-    print(f"sending: '{data}'") #DEBUG
+    # print(f"sending: '{data}'") #DEBUG
     SOCK.sendall(data.encode())
 
 def receive_packet() -> str:
     try:
         data = str(SOCK.recv(PACKET_SIZE).decode())
-        print(f"received: '{data}'") #DEBUG
+        # print(f"received: '{data}'") #DEBUG
         return data
     except Exception as e:
         print(f"failed receiving packets: {e}")
@@ -92,6 +92,7 @@ def join_channel(channel: str):
         print(f"Server: {recv[3]}")
     else:
         print("something unexpected happened")
+        print(recv)
     
 def send_message():
     global SOCK, NICKNAME, CHANNEL
@@ -143,7 +144,7 @@ def receive_message():
             channel = data[2] if data[2] is not None else ""
             content = data[3] if data[3] is not None else ""
             if command == "MESSAGE":
-                print(f"{nickname}{channel}: {content}") # DEBUG
+                print(f"{nickname}{channel}: {content}") 
             elif command == "QUIT": # doesn't have any checks :DDDDD
                 # Server might send a QUIT message upon disconnect
                 print(f"[Server] {content}")
@@ -189,6 +190,7 @@ def send_private_message():
         
         # Handles leaving, easier to implement than keyboard shortcut
         if msg.lower() == "quit":
+            send_packet(Message("QUIT",NICKNAME,CHANNEL,""))
             break
         
         
@@ -225,9 +227,8 @@ def receive_private_message():
             channel = data[2] if data[2] is not None else ""
             content = data[3] if data[3] is not None else ""
             if command == "PRIVATE":
-                print(f"{nickname}{channel}: {content}") # DEBUG
+                print(f"{nickname}: {content}") 
             elif command == "QUIT": # doesn't have any checks :DDDDD
-                # Server might send a QUIT message upon disconnect
                 print(f"[Server] {content}")
                 running = False  # Stop the thread
             else:

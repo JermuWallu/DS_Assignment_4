@@ -19,7 +19,6 @@ class Message:
         self.content = content
         
 # Global variables:
-
 CLIENTS = {} # List of connected clients with {nickname: ip} mapping
 CHANNELS = ["#general", "#gaming", "#coding"] # List of current channels
 PACKET_SIZE = 2048 # default packet size
@@ -83,13 +82,12 @@ def send_private_message(message: Message):
     sent = False
     # Find recipient and send message privately
     recipient = message.channel
-    if recipient in [nickname for nickname, _ in CLIENTS.values()]:
-        for conn, (nickname_, _) in CLIENTS.items():
-            if nickname_ == recipient or nickname_ == message.nickname:
-                with CLIENT_THREADS[conn]:
-                    send_packet(conn, message)
-                    sent = True
-    else:
+    for conn, (nickname_, _) in CLIENTS.items():
+        if nickname_ == recipient or nickname_ == message.nickname:
+            with CLIENT_THREADS[conn]:
+                send_packet(conn, message)
+                sent = True
+    if not sent:
         # Send message back to sender indicating recipient not found
         sender_conn = next(iter(CLIENTS))  # Get sender's connection
         with CLIENT_THREADS[sender_conn]:
@@ -128,6 +126,7 @@ def handle_client(conn: socket.socket, addr):
                     send_packet(conn, Message("OK", message.nickname, message.channel, ""))
                     
                     # Broadcast join message
+                    sleep(1)
                     broadcast_to_channel(Message("MESSAGE", "SERVER", message.channel, f"'{message.nickname}' has joined the chat!"))
                 else:    
                     send_packet(conn, Message("ERROR","","","Invalid channel!"))
@@ -163,7 +162,7 @@ def clients_count():
     while True:
         if actives != threading.activeCount():
             actives = threading.activeCount()
-            print(f"current clients: {threading.activeCount()-1}\n")
+            print(f"current clients: {threading.activeCount()-2}\n")
             sleep(3)
 def main():
     HOST, PORT = "localhost", 8000
