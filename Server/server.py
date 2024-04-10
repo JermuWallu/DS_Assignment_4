@@ -1,6 +1,7 @@
 import socket
 import sys
 import threading
+from time import sleep
 
 # TODO:
 # - Accept incoming connection
@@ -20,7 +21,7 @@ class Message:
 # Global variables:
 
 CLIENTS = {} # List of connected clients with {nickname: ip} mapping
-CHANNELS = ['#general'] # List of current channels
+CHANNELS = ["#general", "#gaming", "#coding"] # List of current channels
 PACKET_SIZE = 2048 # default packet size
 CLIENT_THREADS = {} # Dictionary to lock access to client data
 
@@ -50,7 +51,7 @@ def broadcast(message: Message):
             if conn != message.nickname:  # Don't send to the sender itself
                 send_packet(conn, message)
 
-def broadcast_to_channel(message: Message): # EI TÄLLÄ HETKELLÄ TOIMI
+def broadcast_to_channel(message: Message):
     # Send message to all clients in the same channel
     for conn, (nickname, channel) in CLIENTS.items():
         with CLIENT_THREADS[conn]: # Tää kusee, ei löydä keyta
@@ -59,10 +60,11 @@ def broadcast_to_channel(message: Message): # EI TÄLLÄ HETKELLÄ TOIMI
                 
 def handle_quit(conn, nickname):
     # Remove client from list and broadcast leave message
+    print(f"closing client '{nickname} Thread '{CLIENT_THREADS[conn]}'") 
     with CLIENT_THREADS[conn]:
         del CLIENTS[conn]
         del CLIENT_THREADS[conn]
-    broadcast(Message('SERVER', None, None, f"{nickname} has left the chat!"))
+    broadcast(Message("MESSAGE", "SERVER", "", f"{nickname} has left the chat!"))
     conn.close()  # Close the connection
 
 def send_private_message(message: Message):
@@ -78,7 +80,7 @@ def send_private_message(message: Message):
         # Send message back to sender indicating recipient not found
         sender_conn = next(iter(CLIENTS))  # Get sender's connection
         with CLIENT_THREADS[sender_conn]:
-            send_packet(sender_conn, Message('ERROR', None, None, f"User {recipient} not found!"))
+            send_packet(sender_conn, Message("ERROR", None, None, f"User {recipient} not found!"))
 
 def handle_client(conn: socket.socket, addr):
     print(f"Connected by {addr}")
@@ -89,13 +91,13 @@ def handle_client(conn: socket.socket, addr):
         try:
             message = receive_packet(conn, addr)
             if message is None:
-                continue
+                break
             
             elif message.command == "CONNECT":
                 # Error handling
                 if message.nickname == "":
                     send_packet(conn, Message("ERROR","","","Invalid Nickname!"))
-                    break
+                    continue
                 # Check if nickname is taken TODO: fix
                 # if CLIENTS[message.nickname] != None:
                 #     send_packet(conn, Message("ERROR","","","Nickname already in use!"))
@@ -103,58 +105,70 @@ def handle_client(conn: socket.socket, addr):
                 # assign nickname to client and give list of channels
                 with CLIENT_THREADS[conn]:
                     nickname = message.nickname
-                    CLIENTS[conn] = (nickname, '#general')  # Default channel
+                    CLIENTS[conn] = (nickname, "#general")  # Default channel
                     send_packet(conn, Message("CHANNELS",message.nickname,"",str(CHANNELS)))
                 
             elif message.command == "JOIN":
                 # tries to find desired channel and if successful, checks if desired nick is taken
                 if message.channel in CHANNELS:
                     CLIENTS[conn] = (nickname, message.channel)  # Default channel
-                        
-                    # Broadcast join message
-                    # broadcast(Message('SERVER', None, None, f"{message.nickname} has joined the chat!"))
                     send_packet(conn, Message("OK", message.nickname, message.channel, ""))
+                    
+                    
+                    # Broadcast join message
+                    broadcast_to_channel(Message("MESSAGE", "SERVER", message.channel, f"'{message.nickname}' has joined the chat!"))
+                    
                     
                 else:    
                     send_packet(conn, Message("ERROR","","","Invalid channel!"))
 
-                break
+                continue
             
-            elif message.command == 'MESSAGE':
+            elif message.command == "MESSAGE":
                 broadcast_to_channel(message)
-                break
+                continue
             
-            elif message.command == 'PRIVATE':
+            elif message.command == "PRIVATE":
                 send_private_message(message)
-                break
+                continue
             
-            elif message.command == 'QUIT':
-                handle_quit(message.nickname)
+            elif message.command == "QUIT":
+                handle_quit(conn, message.nickname)
                 break
             
             elif message.command == "DISCONNECT":
                 # Server doesn't have to do anything since client already left 
-                break
+                continue
             
             else:
                 print("mitä vittua")
                 print(message.__str__)
-                pass
+                continue
         except ConnectionAbortedError as E:
             print(f"Client {addr} disconnected abruptly!")
             handle_quit(conn, CLIENTS[conn][0])
 
+    return
+
+def clients_count():
+    actives = 0
+    while True:
+        if actives != threading.activeCount():
+            actives = threading.activeCount()
+            print(f"current clients: {threading.activeCount()}\n")
+            sleep(3)
 def main():
     HOST, PORT = "localhost", 8000
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
         server.bind((HOST, PORT))
         server.listen(1) # in documentation it put 1 there :D
         print(f"Server listening on {HOST}:{PORT}")
-        
+        threading.Thread(target=clients_count).start()
         while True:
             conn, addr = server.accept()
             thread = threading.Thread(target=handle_client,args=(conn,addr))
             thread.start()
-
-if __name__ == '__main__':
+            threading.Thread
+            
+if __name__ == "__main__":
     main()
