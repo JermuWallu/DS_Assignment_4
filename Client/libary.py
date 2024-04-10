@@ -1,5 +1,7 @@
-from time import sleep
 import socket
+import threading
+from time import sleep
+
 
 # Class for message structure
 class Message:
@@ -12,12 +14,15 @@ class Message:
 
 # Global variables
 SOCK = None
-CHANNELS = ['#general'] # List of current channels
+CHANNEL = "" # List of current channels
 PACKET_SIZE = 2048 # default packet size
-NICKNAME = ""
+NICKNAME = "" # Current nickname
+
+def send_packet(message: Message):
+    SOCK.sendall(f"{message.command}|{message.nickname}|{message.channel}|{message.content}".encode())
 
 # Connect to server and send data
-def connect(ip="localhost", port=8000) -> list:
+def connect(ip="localhost", port=8000):
     try:
         global SOCK, PACKET_SIZE
         ADDR = (ip, port)
@@ -25,13 +30,38 @@ def connect(ip="localhost", port=8000) -> list:
         SOCK.connect(ADDR)
         
         message = Message("JOIN", "", "", "")
-        SOCK.sendall(f"{message.command}|{message.nickname}|{message.channel}|{message.content}".encode())
+        send_packet(message)
         recv_msg = str(SOCK.recv(PACKET_SIZE), "utf-8").split('|')
-        print("Connection established,")
+        print(f"Connection established, Channels:\n{recv_msg[3]}")
         
-        return list(recv_msg[3])
+        return
     except Exception as e:
         print("Error: ",e)
+
+def join_channel(type: str, nickname: str, channel: str):
+    global SOCK, NICKNAME
+    
+
+    message = Message("JOIN", nickname, channel, "")
+    send_packet(message)
+    recv = str(SOCK.recv(PACKET_SIZE), "utf-8").split('|')
+    if recv[0] == "OK":
+        NICKNAME = recv[1]
+        CHANNEL = recv[2]
+        
+        # Start thread to receive messages
+        receive_thread = threading.Thread(target=receive_message)
+        receive_thread.start()
+
+        # Send thread to send messages
+        send_thread = threading.Thread(target=send_message)
+        send_thread.start() 
+        # send_thread.join() # Wait for the send thread to finish
+    elif recv[0] == "ERROR":
+        print(f"Server: {recv[3]}")
+    else:
+        print("something unexpected happened")
+
 
 def disconnect():
     global SOCK
@@ -40,51 +70,59 @@ def disconnect():
         return
     
     message = Message("DISCONNECT", "", "", "")
-    SOCK.sendall(f"{message.command}|{message.nickname}|{message.channel}|{message.content}".encode())
+    send_packet(message)
     SOCK.close()
     SOCK = None
     print("\nDisconnected from server")
     return
     
-def send_message(message):
-    global SOCK
-    
-    # check if there is a connection
-    if SOCK is None:
-        print("Connection hasn't been established, use connect() first.")
+def send_message():
+    global SOCK, NICKNAME, CHANNEL
+    while True:
+        # check if there is a connection
+        if SOCK is None:
+            print("Connection hasn't been established, use connect() first.")
+            break
+            
+        msg = input()
+        if msg == None:
+            continue
         
-    # Encode message and send it to the server
-    data = message.encode()
-    SOCK.sendall(data)
+        # Handles leaving, easier to implement than keyboard shortcut
+        if msg.lower() == "Quit":
+            break
+        
+        
+        # Encode message and send it to the server
+        message = Message("JOIN", NICKNAME, CHANNEL, msg)
+        send_packet(message)
 
 def receive_message() -> Message:
     global SOCK
-    
-    # check if there is a connection
-    if SOCK is None:
-        print("Connection hasn't been established, use connect() first.")
-        return
-    
-    # Receive message data and decode it
-    data = SOCK.request.recv(PACKET_SIZE).decode()
-    
-    # Split data into message components
-    data.split('|')
-    print(f"PACKET: from {SOCK.client_address[0]}, data: {data}")
-    command = data[0] if data[0] is not None else ""
-    nickname = data[1] if data[1] is not None else ""
-    channel = data[2] if data[2] is not None else ""
-    content = data[3] if data[3] is not None else ""
-    
-    return Message(command, nickname, channel, content)
-
-def join_channel(type: str, nickname: str, channel: str):
-    global SOCK, NICKNAME
-    
-    print(f"joined {type} channel D:DDD:D:D:D")
-    # message = Message("SET", nickname, "#general", "")
-    # SOCK.sendall(f"{message.command}|{message.nickname}|{message.channel}|{message.content}".encode())
-    # recv_message = str(SOCK.recv(PACKET_SIZE), "utf-8").split('|')
+    while True:
+        # check if there is a connection
+        if SOCK is None:
+            print("Connection hasn't been established, use connect() first.")
+            break
+        
+        # Receive message data and decode it
+        data = SOCK.request.recv(PACKET_SIZE).decode()
+        if data == None:
+            print("connection has been closed.")
+            break
+        
+        
+        print(f"PACKET: from {SOCK.client_address[0]}, data: {data}") # DEBUG
+        
+        
+        # Split data into message components
+        data = data.split('|')
+        command = data[0] if data[0] is not None else ""
+        nickname = data[1] if data[1] is not None else ""
+        channel = data[2] if data[2] is not None else ""
+        content = data[3] if data[3] is not None else ""
+        
+        # TODO: print the text to client
     
 def test_message():
     if SOCK is None:

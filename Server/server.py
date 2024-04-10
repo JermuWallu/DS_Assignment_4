@@ -51,7 +51,7 @@ class ChatServerHandler(BaseRequestHandler):
             if channel == message.channel:
                 self.send_message_to(client, message)
 
-    def broadcast_to_channel(self, message: Message):
+    def message_to_channel(self, message: Message):
         # Send message to all clients in the same channel
         self.broadcast(Message(message.command, message.nickname, message.channel, message.content))
 
@@ -105,7 +105,7 @@ class ChatServerHandler(BaseRequestHandler):
                 break
             
             elif message.command == 'MESSAGE':
-                self.broadcast_to_channel(message)
+                self.message_to_channel(message)
                 break
             
             elif message.command == 'PRIVATE':
